@@ -385,7 +385,9 @@ async def create_and_send_table(update: Update, context: ContextTypes.DEFAULT_TY
         caption=(
             f"✅ Таблица успешно создана!\n\n"
             f"📦 Количество позиций: {position_count}\n\n"
-            "Чтобы начать новый заказ нажмите:"
+            "Сформированный файл отправте Анастасииhttps://t.me/Chinanasti или в вашу рабочую группу!\n"
+            "🔄 Создать новый заказ:"
+            
         ),
         reply_markup=reply_markup
     )
@@ -449,4 +451,5 @@ def main():
     application.run_polling()
 
 if __name__ == "__main__":
+
     main()
