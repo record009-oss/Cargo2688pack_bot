@@ -9,6 +9,22 @@ from openpyxl.drawing.image import Image
 from openpyxl.utils import get_column_letter
 import tempfile
 import os
+from telegram.error import BadRequest
+
+# ← ДОБАВЬ ЭТУ ФУНКЦИЮ ЗДЕСЬ (после импортов, до остального кода)
+async def handle_old_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+        await query.edit_message_text(
+            "🔄 Сессия устарела. Нажмите /start чтобы начать заново."
+        )
+    except BadRequest:
+        # Если сообщение уже нельзя редактировать
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text="🔄 Сессия устарела. Нажмите /start чтобы начать заново."
+        )
 
 # ВСТАВЬ СВОЙ ТОКЕН ЗДЕСЬ
 BOT_TOKEN = "8346614759:AAHbqo5tm34zlVyNmy4_0k_suxe3dgG93ks"
@@ -419,6 +435,9 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("cancel", cancel))
     
+    # ← ДОБАВЬ ЭТУ СТРОКУ - обработчик для устаревших callback_query
+    application.add_handler(CallbackQueryHandler(handle_old_callback, pattern=None))
+    
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(start_work, pattern='^start_work$'),
@@ -451,6 +470,5 @@ def main():
     application.run_polling()
 
 if __name__ == "__main__":
-
     main()
 
