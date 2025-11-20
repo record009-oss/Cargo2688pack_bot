@@ -1,7 +1,9 @@
+import re
 import logging
 import pandas as pd
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackQueryHandler
+from telegram.error import BadRequest
 from io import BytesIO
 import openpyxl
 import openpyxl.styles
@@ -14,13 +16,23 @@ from telegram.error import BadRequest
 # ← ДОБАВЬ ЭТУ ФУНКЦИЮ ЗДЕСЬ (после импортов, до остального кода)
 async def handle_old_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    callback_data = query.data
+    
+    # Проверяем известные паттерны которые ДОЛЖНЫ работать
+    known_callbacks = ['start_work', 'new_order_after_finish', 'skip_link', 'add_more', 'finish']
+    
+    # Если callback_data есть в списке известных - это ошибка, пропускаем
+    if callback_data in known_callbacks:
+        # Это известная кнопка, но что-то пошло не так - пропускаем обработку
+        return
+    
+    # Если callback_data НЕТ в известных - это устаревшая кнопка
     try:
         await query.answer()
         await query.edit_message_text(
             "🔄 Сессия устарела. Нажмите /start чтобы начать заново."
         )
     except BadRequest:
-        # Если сообщение уже нельзя редактировать
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text="🔄 Сессия устарела. Нажмите /start чтобы начать заново."
@@ -471,4 +483,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
