@@ -446,10 +446,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("cancel", cancel))
-    
-    # ← ДОБАВЬ ЭТУ СТРОКУ - обработчик для устаревших callback_query
-    application.add_handler(CallbackQueryHandler(handle_old_callback, pattern=None))
-    
+        
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(start_work, pattern='^start_work$'),
@@ -483,6 +480,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
