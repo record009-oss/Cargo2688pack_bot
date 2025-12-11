@@ -1,4 +1,3 @@
-import re
 import logging
 import pandas as pd
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -8,35 +7,8 @@ from io import BytesIO
 import openpyxl
 import openpyxl.styles
 from openpyxl.drawing.image import Image
-from openpyxl.utils import get_column_letter
 import tempfile
 import os
-from telegram.error import BadRequest
-
-# ← ЗАМЕНИ ЭТУ ФУНКЦИЮ НА НОВУЮ ВЕРСИЮ
-async def handle_old_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    
-    try:
-        # Пытаемся обработать запрос - если кнопка устарела, вылетит исключение
-        await query.answer()
-        
-        # Если дошли сюда - кнопка валидная, но не обработана другими обработчиками
-        # Это может быть устаревшая кнопка из старой сессии
-        await query.edit_message_text(
-            "🔄 Сессия устарела. Нажмите /start чтобы начать заново."
-        )
-        
-    except BadRequest as e:
-        if "Query is too old" in str(e) or "Message is not modified" in str(e):
-            # Кнопка устарела - отправляем новое сообщение
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="🔄 Сессия устарела. Нажмите /start чтобы начать заново."
-            )
-        else:
-            # Другая ошибка - пропускаем
-            raise e
 
 # ВСТАВЬ СВОЙ ТОКЕН ЗДЕСЬ
 BOT_TOKEN = "8346614759:AAHbqo5tm34zlVyNmy4_0k_suxe3dgG93ks"
@@ -72,11 +44,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Привет, {user_name}👋 !\n\n"
         "Добро пожаловать в бот Cargo_2688 для создания упаковочного листа\n\n"
         "📦 Этот бот поможет:\n"
-        "• 📸 Создавать упаковочные листы с фото товаров и ссылкой на товар\n"
+        "• 📸 Создавать упаковочные листы с фото товаров\n"
         "• 📋 Экспортировать данные в Excel\n\n"
         "Для продолжения нажмите - начать работу",
         reply_markup=reply_markup
     )
+
+# Команда /reset - сброс зависшей сессии
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id in user_data:
+        del user_data[user_id]
+    
+    await update.message.reply_text(
+        "🔄 Сессия сброшена! Теперь можете начать заново.\n"
+        "Нажмите /start чтобы начать новую работу."
+    )
+    return ConversationHandler.END
 
 # Обработка нажатия инлайн кнопки "Начать работу"
 async def start_work(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,7 +91,6 @@ async def new_order_after_finish(update: Update, context: ContextTypes.DEFAULT_T
         'positions': []
     }
     
-    # Отправляем новое сообщение вместо редактирования старого
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text="🚀 Начинаем создание упаковочного листа!\n\n"
@@ -119,6 +102,19 @@ async def new_order_after_finish(update: Update, context: ContextTypes.DEFAULT_T
 # Обработка кода клиента
 async def handle_client_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # Проверяем, не "завис" ли пользователь в старой сессии
+    if user_id not in user_data:
+        user_data[user_id] = {
+            'client_code': None,
+            'positions': []
+        }
+        await update.message.reply_text(
+            "🔄 Обнаружена старая сессия. Начинаем заново!\n\n"
+            "1️⃣ Введите код клиента:"
+        )
+        return CLIENT_CODE
+    
     user_data[user_id]['client_code'] = update.message.text
     
     await update.message.reply_text(
@@ -132,7 +128,6 @@ async def handle_client_code(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_track_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # Сохраняем текущий трек номер во временное хранилище
     context.user_data['current_track_number'] = update.message.text
     
     await update.message.reply_text(
@@ -146,14 +141,12 @@ async def handle_track_number(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
-    # Сохраняем информацию о фото
     photo = update.message.photo[-1]
     current_photo = {
         'file_id': photo.file_id,
         'file_unique_id': photo.file_unique_id
     }
     
-    # Сохраняем текущее фото во временное хранилище
     context.user_data['current_photo'] = current_photo
     
     await update.message.reply_text(
@@ -193,7 +186,6 @@ async def handle_quantity(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     context.user_data['current_quantity'] = update.message.text
     
-    # Создаем клавиатуру с кнопкой "Пропустить"
     keyboard = [
         [InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_link")]
     ]
@@ -235,7 +227,6 @@ async def save_position_and_continue(update: Update, context: ContextTypes.DEFAU
     
     user_data[user_id]['positions'].append(current_position)
     
-    # Очищаем временные данные
     context.user_data.pop('current_track_number', None)
     context.user_data.pop('current_photo', None)
     context.user_data.pop('current_name', None)
@@ -399,7 +390,6 @@ async def create_and_send_table(update: Update, context: ContextTypes.DEFAULT_TY
     
     output.seek(0)
     
-    # Создаем кнопку для нового заказа
     keyboard = [
         [InlineKeyboardButton("🔄 Создать новый заказ", callback_data="new_order_after_finish")]
     ]
@@ -413,9 +403,7 @@ async def create_and_send_table(update: Update, context: ContextTypes.DEFAULT_TY
         caption=(
             f"✅ Таблица успешно создана!\n\n"
             f"📦 Количество позиций: {position_count}\n\n"
-            "Сформированный файл отправте Анастасии @Chinanasti или в вашу рабочую группу!\n\n"
-            "🔄 Создать новый заказ:"
-            
+            "Чтобы начать новый заказ нажмите:"
         ),
         reply_markup=reply_markup
     )
@@ -446,7 +434,8 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("cancel", cancel))
-        
+    application.add_handler(CommandHandler("reset", reset))
+    
     conv_handler = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(start_work, pattern='^start_work$'),
@@ -468,7 +457,13 @@ def main():
                 CallbackQueryHandler(finish_and_send, pattern='^finish$')
             ]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[
+            CommandHandler('cancel', cancel),
+            CommandHandler('reset', reset),
+            CommandHandler('start', start)
+        ],
+        conversation_timeout=3600,
+        allow_reentry=True
     )
     
     application.add_handler(conv_handler)
@@ -480,7 +475,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
